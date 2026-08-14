@@ -9,12 +9,38 @@ function estimateDuration(text: string): number {
   return Math.max(1, Math.round((words / WORDS_PER_MINUTE) * 60))
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function pickBestVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  if (!voices.length) return null
+  const langBase = (navigator.language || 'en').split('-')[0].toLowerCase()
+  const natural = /natural|neural|premium|enhanced|online/i
+  let best: SpeechSynthesisVoice | null = null
+  let bestScore = -1
+  for (const voice of voices) {
+    let score = 0
+    if (voice.lang.toLowerCase().startsWith(langBase)) score += 4
+    if (natural.test(voice.name)) score += 3
+    if (/google/i.test(voice.name)) score += 2
+    if (voice.default) score += 1
+    if (score > bestScore) {
+      bestScore = score
+      best = voice
+    }
+  }
+  return best
+}
+
 export function useSpeech(initialText: string) {
   const [text, setText] = useState(initialText)
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const timerRef = useRef<number | null>(null)
+  const baseOffsetRef = useRef(0)
+  const voiceRef = useRef<SpeechSynthesisVoice | null>(null)
 
   const duration = estimateDuration(text)
 
@@ -25,67 +51,102 @@ export function useSpeech(initialText: string) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return
+    const synth = window.speechSynthesis
+    const updateVoice = () => {
+      const best = pickBestVoice(synth.getVoices())
+      if (best) voiceRef.current = best
+    }
+    updateVoice()
+    synth.addEventListener?.('voiceschanged', updateVoice)
+    return () => synth.removeEventListener?.('voiceschanged', updateVoice)
+  }, [])
+
   const stop = useCallback(() => {
     window.speechSynthesis?.cancel()
     stopTimer()
     setIsPlaying(false)
   }, [stopTimer])
 
-  const play = useCallback(() => {
-    if (!('speechSynthesis' in window)) return
-    const value = text.trim()
-    if (!value) return
+  const speakFrom = useCallback(
+    (startSeconds: number) => {
+      if (!('speechSynthesis' in window)) return
+      const value = text.trim()
+      if (!value) return
+      const total = estimateDuration(value)
+      const startClamped = clamp(startSeconds, 0, total)
+      const base = Math.floor((startClamped / total) * value.length)
+      const remaining = value.slice(base).trim()
+      if (!remaining) {
+        setCurrentTime(total)
+        setProgress(100)
+        return
+      }
 
-    const total = estimateDuration(value)
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(value)
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(remaining)
+      if (voiceRef.current) utterance.voice = voiceRef.current
+      baseOffsetRef.current = base
 
-    utterance.onstart = () => {
-      setIsPlaying(true)
-      setCurrentTime(0)
-      const startTime = Date.now()
-      stopTimer()
-      timerRef.current = window.setInterval(() => {
-        const elapsed = (Date.now() - startTime) / 1000
-        if (elapsed >= total) {
-          setCurrentTime(total)
-          setProgress(100)
-          stopTimer()
-        } else {
-          setCurrentTime(Math.floor(elapsed))
-          setProgress((elapsed / total) * 100)
-        }
-      }, REFRESH_MS)
-    }
+      utterance.onstart = () => {
+        setIsPlaying(true)
+        const startWall = Date.now()
+        setCurrentTime(startClamped)
+        setProgress((startClamped / total) * 100)
+        stopTimer()
+        timerRef.current = window.setInterval(() => {
+          const elapsed = (Date.now() - startWall) / 1000
+          const t = Math.min(total, startClamped + elapsed)
+          setCurrentTime(t)
+          setProgress((t / total) * 100)
+        }, REFRESH_MS)
+      }
 
-    utterance.onend = () => {
-      stopTimer()
-      setIsPlaying(false)
-      setProgress(100)
-      setCurrentTime(total)
-    }
+      utterance.onboundary = (event) => {
+        const absolute = baseOffsetRef.current + event.charIndex
+        const ratio = value.length ? absolute / value.length : 0
+        setCurrentTime(ratio * total)
+        setProgress(ratio * 100)
+      }
 
-    utterance.onerror = () => {
-      stopTimer()
-      setIsPlaying(false)
-    }
+      utterance.onend = () => {
+        stopTimer()
+        setIsPlaying(false)
+        setCurrentTime(total)
+        setProgress(100)
+      }
 
-    window.speechSynthesis.speak(utterance)
-  }, [stopTimer, text])
+      utterance.onerror = () => {
+        stopTimer()
+        setIsPlaying(false)
+      }
+
+      window.speechSynthesis.speak(utterance)
+    },
+    [stopTimer, text],
+  )
 
   const toggle = useCallback(() => {
-    if (isPlaying) stop()
-    else play()
-  }, [isPlaying, play, stop])
+    if (isPlaying) {
+      stop()
+    } else {
+      speakFrom(currentTime >= duration ? 0 : currentTime)
+    }
+  }, [currentTime, duration, isPlaying, speakFrom, stop])
 
   const seekTo = useCallback(
     (seconds: number) => {
       const total = estimateDuration(text)
-      const clamped = Math.min(total, Math.max(0, seconds))
-      setCurrentTime(clamped)
-      setProgress((clamped / total) * 100)
+      const clamped = clamp(seconds, 0, total)
+      if (isPlaying) {
+        speakFrom(clamped)
+      } else {
+        setCurrentTime(clamped)
+        setProgress((clamped / total) * 100)
+      }
     },
-    [text],
+    [isPlaying, speakFrom, text],
   )
 
   const skip = useCallback(
@@ -96,16 +157,14 @@ export function useSpeech(initialText: string) {
   )
 
   const restart = useCallback(() => {
-    stop()
     seekTo(0)
-  }, [seekTo, stop])
+  }, [seekTo])
 
   const finish = useCallback(() => {
     stop()
-    const total = estimateDuration(text)
-    setCurrentTime(total)
+    setCurrentTime(duration)
     setProgress(100)
-  }, [stop, text])
+  }, [duration, stop])
 
   useEffect(
     () => () => {
