@@ -17,7 +17,7 @@ interface AudioControlsProps {
   onFinish: () => void
 }
 
-function SkipIcon({ forward, title }: { forward: boolean; title: string }) {
+function SkipIcon({ forward }: { forward: boolean }) {
   const Icon = forward ? RotateCw : RotateCcw
   return (
     <span className="relative inline-flex" aria-hidden="true">
@@ -58,7 +58,7 @@ export const AudioControls = memo(function AudioControls({
           aria-label="Rewind 10 seconds"
           title="Rewind 10 seconds"
         >
-          <SkipIcon forward={false} title="Rewind 10 seconds" />
+          <SkipIcon forward={false} />
         </IconButton>
 
         <button
@@ -77,7 +77,7 @@ export const AudioControls = memo(function AudioControls({
           aria-label="Forward 10 seconds"
           title="Forward 10 seconds"
         >
-          <SkipIcon forward title="Forward 10 seconds" />
+          <SkipIcon forward />
         </IconButton>
 
         <IconButton
