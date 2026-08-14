@@ -20,11 +20,9 @@ interface AudioControlsProps {
 function SkipIcon({ forward }: { forward: boolean }) {
   const Icon = forward ? RotateCw : RotateCcw
   return (
-    <span className="relative inline-flex" aria-hidden="true">
+    <span className="relative grid size-5 place-items-center" aria-hidden="true">
       <Icon className="size-5" />
-      <span className="absolute inset-0 flex items-center justify-center pb-0.5 text-[7px] font-bold leading-none">
-        10
-      </span>
+      <span className="absolute text-[7px] font-bold leading-none tracking-tight">10</span>
     </span>
   )
 }
@@ -66,9 +64,9 @@ export const AudioControls = memo(function AudioControls({
           onClick={onToggle}
           aria-label={isPlaying ? 'Pause' : 'Play'}
           title={isPlaying ? 'Pause' : 'Play'}
-          className="flex size-14 cursor-pointer items-center justify-center rounded-full bg-accent text-background shadow-accent transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="flex size-14 cursor-pointer items-center justify-center rounded-full bg-accent text-background shadow-accent transition-[filter,transform] hover:brightness-110 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          {isPlaying ? <Pause className="size-6" /> : <Play className="size-6 translate-x-0.5" />}
+          {isPlaying ? <Pause className="size-6" /> : <Play className="size-6" />}
         </button>
 
         <IconButton
