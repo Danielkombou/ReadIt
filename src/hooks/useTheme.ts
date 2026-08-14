@@ -1,23 +1,43 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
+type ThemeMode = 'system' | 'light' | 'dark'
 
 const THEME_KEY = 'readit-theme'
+const DARK_QUERY = '(prefers-color-scheme: dark)'
 
-function getInitialTheme(): boolean {
-  if (typeof window === 'undefined') return true
+function getInitialMode(): ThemeMode {
+  if (typeof window === 'undefined') return 'system'
   const stored = window.localStorage.getItem(THEME_KEY)
-  if (stored) return stored === 'dark'
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
+  if (stored === 'light' || stored === 'dark') return stored
+  return 'system'
 }
 
 export function useTheme() {
-  const [isDark, setIsDark] = useState(getInitialTheme)
+  const [mode, setMode] = useState<ThemeMode>(getInitialMode)
+  const [systemDark, setSystemDark] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(DARK_QUERY).matches,
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia(DARK_QUERY)
+    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  const isDark = mode === 'system' ? systemDark : mode === 'dark'
 
   useEffect(() => {
     const root = document.documentElement
     root.classList.toggle('dark', isDark)
     root.style.colorScheme = isDark ? 'dark' : 'light'
-    window.localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light')
   }, [isDark])
 
-  return { isDark, toggleTheme: () => setIsDark((value) => !value) }
+  const toggleTheme = useCallback(() => {
+    const next: ThemeMode = isDark ? 'light' : 'dark'
+    setMode(next)
+    window.localStorage.setItem(THEME_KEY, next)
+  }, [isDark])
+
+  return { isDark, mode, toggleTheme }
 }

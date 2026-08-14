@@ -14,9 +14,9 @@ export function useSpeech(initialText: string) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(() => estimateDuration(initialText))
   const timerRef = useRef<number | null>(null)
-  const durationRef = useRef(duration)
+
+  const duration = estimateDuration(text)
 
   const stopTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -36,7 +36,7 @@ export function useSpeech(initialText: string) {
     const value = text.trim()
     if (!value) return
 
-    const total = durationRef.current
+    const total = estimateDuration(value)
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(value)
 
@@ -71,19 +71,22 @@ export function useSpeech(initialText: string) {
     }
 
     window.speechSynthesis.speak(utterance)
-  }, [text, stopTimer])
+  }, [stopTimer, text])
 
   const toggle = useCallback(() => {
     if (isPlaying) stop()
     else play()
   }, [isPlaying, play, stop])
 
-  const seekTo = useCallback((seconds: number) => {
-    const total = durationRef.current
-    const clamped = Math.min(total, Math.max(0, seconds))
-    setCurrentTime(clamped)
-    setProgress((clamped / total) * 100)
-  }, [])
+  const seekTo = useCallback(
+    (seconds: number) => {
+      const total = estimateDuration(text)
+      const clamped = Math.min(total, Math.max(0, seconds))
+      setCurrentTime(clamped)
+      setProgress((clamped / total) * 100)
+    },
+    [text],
+  )
 
   const skip = useCallback(
     (delta: number) => {
@@ -99,15 +102,10 @@ export function useSpeech(initialText: string) {
 
   const finish = useCallback(() => {
     stop()
-    setCurrentTime(durationRef.current)
+    const total = estimateDuration(text)
+    setCurrentTime(total)
     setProgress(100)
-  }, [stop])
-
-  useEffect(() => {
-    const next = estimateDuration(text)
-    durationRef.current = next
-    setDuration(next)
-  }, [text])
+  }, [stop, text])
 
   useEffect(
     () => () => {
