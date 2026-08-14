@@ -4,8 +4,22 @@ const WORDS_PER_MINUTE = 150
 const REFRESH_MS = 200
 export const MAX_CHARS = 5000
 
+function stripEmoji(text: string): string {
+  return text
+    .replace(/\u{1F3FB}/gu, '')
+    .replace(/\u{1F3FC}/gu, '')
+    .replace(/\u{1F3FD}/gu, '')
+    .replace(/\u{1F3FE}/gu, '')
+    .replace(/\u{1F3FF}/gu, '')
+    .replace(/\u200D/gu, '')
+    .replace(/\uFE0F/gu, '')
+    .replace(/\u20E3/gu, '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+}
+
 function estimateDuration(text: string): number {
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0
+  const spoken = stripEmoji(text)
+  const words = spoken.trim() ? spoken.trim().split(/\s+/).length : 0
   return Math.max(1, Math.round((words / WORDS_PER_MINUTE) * 60))
 }
 
@@ -72,7 +86,7 @@ export function useSpeech(initialText: string) {
   const speakFrom = useCallback(
     (startSeconds: number) => {
       if (!('speechSynthesis' in window)) return
-      const value = text.trim()
+      const value = stripEmoji(text).trim()
       if (!value) return
       const total = estimateDuration(value)
       const startClamped = clamp(startSeconds, 0, total)
