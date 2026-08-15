@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { track } from '../lib/analytics'
 
 const WORDS_PER_MINUTE = 150
 const REFRESH_MS = 200
+const MILESTONES = [25, 50, 75, 100]
 export const MAX_CHARS = 5000
 
 function sanitizeForSpeech(text: string): string {
@@ -56,8 +58,18 @@ export function useSpeech(initialText: string) {
   const timerRef = useRef<number | null>(null)
   const baseOffsetRef = useRef(0)
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null)
+  const milestonesRef = useRef(new Set<number>())
 
   const duration = estimateDuration(text)
+
+  const checkMilestones = useCallback((currentProgress: number) => {
+    for (const milestone of MILESTONES) {
+      if (currentProgress >= milestone && !milestonesRef.current.has(milestone)) {
+        milestonesRef.current.add(milestone)
+        track(`progress_${milestone}`, { progress: Math.round(currentProgress) })
+      }
+    }
+  }, [])
 
   const stopTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -106,6 +118,7 @@ export function useSpeech(initialText: string) {
 
       utterance.onstart = () => {
         setIsPlaying(true)
+        track('play', { position: Math.round(startClamped) })
         const startWall = Date.now()
         setCurrentTime(startClamped)
         setProgress((startClamped / total) * 100)
@@ -115,6 +128,7 @@ export function useSpeech(initialText: string) {
           const t = Math.min(total, startClamped + elapsed)
           setCurrentTime(t)
           setProgress((t / total) * 100)
+          checkMilestones((t / total) * 100)
         }, REFRESH_MS)
       }
 
@@ -123,11 +137,13 @@ export function useSpeech(initialText: string) {
         const ratio = value.length ? absolute / value.length : 0
         setCurrentTime(ratio * total)
         setProgress(ratio * 100)
+        checkMilestones(ratio * 100)
       }
 
       utterance.onend = () => {
         stopTimer()
         setIsPlaying(false)
+        track('finished')
         setCurrentTime(total)
         setProgress(100)
       }
@@ -135,15 +151,17 @@ export function useSpeech(initialText: string) {
       utterance.onerror = () => {
         stopTimer()
         setIsPlaying(false)
+        track('error', { message: 'speech_synthesis_error' })
       }
 
       window.speechSynthesis.speak(utterance)
     },
-    [stopTimer, text],
+    [checkMilestones, stopTimer, text],
   )
 
   const toggle = useCallback(() => {
     if (isPlaying) {
+      track('pause', { position: Math.round(currentTime) })
       stop()
     } else {
       speakFrom(currentTime >= duration ? 0 : currentTime)
@@ -160,23 +178,28 @@ export function useSpeech(initialText: string) {
         setCurrentTime(clamped)
         setProgress((clamped / total) * 100)
       }
+      track('seek', { position: Math.round(clamped) })
     },
     [isPlaying, speakFrom, text],
   )
 
   const skip = useCallback(
     (delta: number) => {
+      track('skip', { delta, position: Math.round(currentTime) })
       seekTo(currentTime + delta)
     },
     [currentTime, seekTo],
   )
 
   const restart = useCallback(() => {
+    milestonesRef.current.clear()
+    track('restart')
     seekTo(0)
   }, [seekTo])
 
   const finish = useCallback(() => {
     stop()
+    track('finish')
     setCurrentTime(duration)
     setProgress(100)
   }, [duration, stop])

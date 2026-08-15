@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { track } from '../lib/analytics'
 
 type ThemeMode = 'system' | 'light' | 'dark'
 
@@ -37,6 +38,7 @@ export function useTheme() {
     const next: ThemeMode = isDark ? 'light' : 'dark'
     setMode(next)
     window.localStorage.setItem(THEME_KEY, next)
+    track('theme_toggle', { theme: next })
   }, [isDark])
 
   return { isDark, mode, toggleTheme }

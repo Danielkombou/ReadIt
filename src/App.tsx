@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { useSpeech } from './hooks/useSpeech'
 import { useTheme } from './hooks/useTheme'
+import { trackPageView } from './lib/analytics'
 import { Header } from './components/Header'
 import { TextAreaCard } from './components/TextAreaCard'
 import { AudioControls } from './components/AudioControls'
@@ -13,6 +15,10 @@ The more that you learn, the more places you'll go.`
 export default function App() {
   const { isDark, toggleTheme } = useTheme()
   const speech = useSpeech(DEFAULT_TEXT)
+
+  useEffect(() => {
+    trackPageView()
+  }, [])
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background font-sans text-muted">
